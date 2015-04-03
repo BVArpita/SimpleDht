@@ -47,6 +47,8 @@ public class SimpleDhtProvider extends ContentProvider {
     boolean dht=false;
     String successoris="";
     String predecessoris="";
+    String lowid="";
+    String highid="";
 
     HashMap <String ,List<String>> hm = new HashMap<String,List<String>>();
     List<String> listofnodes = new LinkedList<String>();
@@ -85,6 +87,46 @@ public class SimpleDhtProvider extends ContentProvider {
         final  String myPort = String.valueOf((Integer.parseInt(portStr) * 2));
         return myPort;
     }
+    public Uri writetofile(Uri uri,ContentValues values){
+        String[] filelist=getContext().fileList();
+        String key= values.getAsString("key");
+        String val=values.getAsString("value");
+        //Log.d(TAG,"in insert"+" "+dht+" "+portstring);
+
+        for(String f : filelist) { //to check if file with key name already exists and if so , update value.
+            if (f.equals(key)) {
+                try {
+                    FileOutputStream fos =getContext().openFileOutput(key, Context.MODE_PRIVATE);
+
+
+                    fos.write(val.getBytes());
+
+                    fos.close();
+
+                    return uri;
+                }
+                catch(IOException e){
+                    Log.e(TAG, "Unable to open file");
+                }
+            }
+        }
+
+        try {
+            FileOutputStream fos =getContext().openFileOutput(key, Context.MODE_PRIVATE);
+
+
+            fos.write(val.getBytes());
+
+            fos.close();
+
+            return uri;
+        }
+        catch(IOException e){
+            Log.e(TAG, "Unable to open file");
+        }
+        return uri;
+       // Log.v("insert", values.toString());
+    }
     @Override
     public Uri insert(Uri uri, ContentValues values)  {
 
@@ -105,9 +147,14 @@ public class SimpleDhtProvider extends ContentProvider {
 
         String myport = getport();
         String portstring = Integer.toString(Integer.parseInt(myport)/2);
-        if((genHash(portstring).compareTo(keyid) == 0 || genHash(portstring).compareTo(keyid) == 1) || dht == false){ // if nodeid >= keyid, store in the same content provider
+        if(successoris=="" || predecessoris==""){
+            writetofile(uri,values);
+        }
+        else if(( predecessoris.compareTo(keyid)<0 && keyid.compareTo(genHash(portstring))<=0 ) ){ // if nodeid >= keyid, store in the same content provider
 
-        Log.d(TAG,"in insert"+" "+dht+" "+portstring);
+        writetofile(uri,values);
+
+     /*   Log.d(TAG,"in insert"+" "+dht+" "+portstring);
 
         for(String f : filelist) { //to check if file with key name already exists and if so , update value.
             if (f.equals(key)) {
@@ -141,17 +188,33 @@ public class SimpleDhtProvider extends ContentProvider {
             Log.e(TAG, "Unable to open file");
         }
 
-        Log.v("insert", values.toString());
+        Log.v("insert", values.toString());*/
         //return uri;
         }
+        else if(keyid.compareTo(highid) >0 || keyid.compareTo(lowid) <0){
+            //String lowestid = Collections.min(listofnodes);
+            for(int i=0;i<portstrings.size();i++){
+                if(lowid.equals(genHash(portstrings.get(i)))){
+                    String lowestport = Integer.toString(Integer.parseInt(portstrings.get(i))*2);
+                    String msg = new String("splpartitionin"+key +"-"+val);
+                    new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, msg,lowestport);
+                }
+            }
+            //String lowestport = Integer.toString(Integer.parseInt(lowestid)*2);
+            //String msg = new String("splpartitionin"+key +"-"+val);
+            //new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, msg,lowestport);
+        }
+
         else{
-            Log.d(TAG,"in insert"+portstring+" "+dht);
+            Log.d(TAG,"in insert of else"+portstring+" "+key);
              String successor_k="";
             //Log.d(TAG,)
             String successorid_k=successoris;
             for(int i=0;i<portstrings.size();i++){
                 if (successorid_k.equals(genHash(portstrings.get(i)))){
-                    String msg = "partitionin"+key +"-"+val;
+                    String msg = new String("partitionin"+key +"-"+val);
+                    Log.d(TAG,"message being sent from insert of else is"+" "+msg);
+                    successor_k=Integer.toString(Integer.parseInt(portstrings.get(i))*2);
                     new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, msg,successor_k);
                     //successor_k =portstrings.get(i);
                 }
@@ -239,6 +302,7 @@ public class SimpleDhtProvider extends ContentProvider {
                    // ObjectInputStream br = new ObjectInputStream(clientSocket.getInputStream());
 
                     String recievedmessage =  br.readLine();
+                    Log.d(TAG,"msg recieved is"+" "+br.readLine());
                     if (recievedmessage.substring(0,8).equals("joinring")) {
                         if(!listofnodes.contains("5554")){
                             listofnodes.add("5554");
@@ -251,8 +315,9 @@ public class SimpleDhtProvider extends ContentProvider {
                         }
                         Log.d(TAG,"at server"+" "+recievedmessage.substring(8,12));
                         //send awk
-                        PrintWriter out1 = new PrintWriter(clientSocket.getOutputStream(), true);
-                        out1.println("awk");
+                       // PrintWriter out1 = new PrintWriter(clientSocket.getOutputStream(), true);
+                        //out1.println("awk");
+                        //Log.d(TAG,"awk sent");
                         getnodeid(recievedmessage.substring(8, 12));
 
                     }
@@ -262,13 +327,29 @@ public class SimpleDhtProvider extends ContentProvider {
                         Log.d(TAG,"successoris"+" "+successoris);
                         Log.d(TAG,"prdecessoris"+" "+predecessoris);
                     }
-                    else if(recievedmessage.substring(0,9).equals("partitionin")){
+                    else if(recievedmessage.substring(0,11).equals("partitionin")){
+                        Log.d(TAG,"key is recieved here");
                         ContentValues val =new ContentValues();
-                        val.put("key",recievedmessage.substring(9,recievedmessage.lastIndexOf("-")));
+                        val.put("key",recievedmessage.substring(11,recievedmessage.lastIndexOf("-")));
                         val.put("value",recievedmessage.substring(recievedmessage.lastIndexOf("-")+1));
 
-                        amUri= insert(amUri,val);
+                       // amUri= writetofile(amUri,val);
+                        amUri= insert(amUri, val);
 
+                    }
+                    else if(recievedmessage.substring(0,14).equals("splpartitionin")){
+                        Log.d(TAG,"key is recieved in spl case");
+                        ContentValues val =new ContentValues();
+                        val.put("key",recievedmessage.substring(14,recievedmessage.lastIndexOf("-")));
+                        val.put("value",recievedmessage.substring(recievedmessage.lastIndexOf("-")+1));
+
+                         amUri= writetofile(amUri,val);
+                        //amUri= insert(amUri, val);
+                    }
+                    else if(recievedmessage.substring(0,7).equals("lowhigh")){
+                        Log.d(TAG,"recieved low high");
+                        lowid=recievedmessage.substring(7,recievedmessage.lastIndexOf("-"));
+                        highid=recievedmessage.substring(recievedmessage.lastIndexOf("-")+1);
                     }
                 } catch (IOException e) {
                     Log.e(TAG, "Accept Failed");
@@ -338,8 +419,11 @@ public class SimpleDhtProvider extends ContentProvider {
         //send listofhashnodes to all ports
        for(int i=0;i<listofnodes.size();i++){
            String sendtoport =Integer.toString(Integer.parseInt(listofnodes.get(i).toString()) * 2);
+
            String msg = "pointers"+hm.get(genHash(listofnodes.get(i).toString())).get(0)+"-"+hm.get(genHash(listofnodes.get(i).toString())).get(1);
            new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, msg,sendtoport);
+           String lowhigh = "lowhigh"+Collections.min(listofhashnodes)+"-"+Collections.max(listofhashnodes);
+           new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, lowhigh,sendtoport);
        }
 
 
@@ -358,12 +442,16 @@ public class SimpleDhtProvider extends ContentProvider {
 
                 PrintWriter out = new PrintWriter(socket0.getOutputStream(), true);
                 out.println(m1[0]);
-                Log.d(TAG,"msg sent");
-                BufferedReader br = new BufferedReader(new InputStreamReader(socket0.getInputStream()));
+                Log.d(TAG,"msg sent to"+" "+m1[1]+" "+m1[0]);
+            /*    BufferedReader br = new BufferedReader(new InputStreamReader(socket0.getInputStream()));
+               Log.d(TAG,br.readLine());
                 if(br.readLine()!=null ){
+                    Log.d(TAG,"be is not null");
+                    Log.d(TAG,"br is"+" "+br.readLine());
                     if(br.readLine().equals("awk"))
                         dht=true;
-                }
+                    Log.d(TAG,"awk recived");
+                }*/
                 socket0.close();
 
 
