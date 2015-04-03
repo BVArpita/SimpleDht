@@ -45,6 +45,7 @@ public class SimpleDhtProvider extends ContentProvider {
     static final String REMOTE_PORT4 = "11124";
     static final int SERVER_PORT = 10000;
     boolean dht=false;
+    String resultans="";
     String successoris="";
     String predecessoris="";
     String lowid="";
@@ -191,6 +192,7 @@ public class SimpleDhtProvider extends ContentProvider {
         Log.v("insert", values.toString());*/
         //return uri;
         }
+        //insert in lowest port
         else if(keyid.compareTo(highid) >0 || keyid.compareTo(lowid) <0){
             //String lowestid = Collections.min(listofnodes);
             for(int i=0;i<portstrings.size();i++){
@@ -204,7 +206,7 @@ public class SimpleDhtProvider extends ContentProvider {
             //String msg = new String("splpartitionin"+key +"-"+val);
             //new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, msg,lowestport);
         }
-
+        //send to successor
         else{
             Log.d(TAG,"in insert of else"+portstring+" "+key);
              String successor_k="";
@@ -351,6 +353,35 @@ public class SimpleDhtProvider extends ContentProvider {
                         lowid=recievedmessage.substring(7,recievedmessage.lastIndexOf("-"));
                         highid=recievedmessage.substring(recievedmessage.lastIndexOf("-")+1);
                     }
+                    else if(recievedmessage.substring(0,5).equals("query")){
+                        String myport = getport();
+                        String portstring = Integer.toString(Integer.parseInt(myport)/2);
+                        String selection=recievedmessage.substring(9);
+                        Log.d(TAG,"in query of server"+myport);
+                        if(( predecessoris.compareTo(genHash(selection))<0 && genHash(selection).compareTo(genHash(portstring))<=0 )){
+                            Log.d(TAG,"query result found at"+getport());
+                            String ans=localquery(selection);
+                            Log.d(TAG,"query result found at"+getport()+" "+ans);
+                            sendtooriginator(ans, recievedmessage.substring(5, 9));
+                        }
+                        else{
+                            sendtosuc(recievedmessage);
+                        }
+
+                    }
+                    else if(recievedmessage.substring(0,8).equals("splquery")){
+                        Log.d(TAG,"in splquery of server"+getport());
+                        String selection=recievedmessage.substring(12);
+                        String ans=localquery(selection);
+                        Log.d(TAG,"splquery result found at"+getport()+" "+ans);
+                        sendtooriginator(ans,recievedmessage.substring(8,12));
+                    }
+                    //ans recived from splquery
+                    else if(recievedmessage.substring(0,3).equals("ans")){
+                        resultans=recievedmessage.substring(3);
+                        Log.d(TAG,"final query result recived at"+" "+getport()+" "+resultans);
+                        //resultans="";
+                    }
                 } catch (IOException e) {
                     Log.e(TAG, "Accept Failed");
                 } catch (NoSuchAlgorithmException e) {
@@ -363,6 +394,34 @@ public class SimpleDhtProvider extends ContentProvider {
 
 
 
+    }
+    public void sendtosuc(String querynext) throws NoSuchAlgorithmException {
+        ArrayList<String> portstrings= new ArrayList<String>();
+        portstrings.add("5554");
+        portstrings.add("5556");
+        portstrings.add("5558");
+        portstrings.add("5560");
+        portstrings.add("5562");
+
+        String successorid_k=successoris;
+        String successor_k="";
+
+        for(int i=0;i<portstrings.size();i++){
+            if (successorid_k.equals(genHash(portstrings.get(i)))){
+
+
+                successor_k=Integer.toString(Integer.parseInt(portstrings.get(i))*2);
+                new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, querynext,successor_k);
+                //successor_k =portstrings.get(i);
+            }
+        }
+       // new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, querynext,successor_k);
+    }
+    public void sendtooriginator(String ans,String originator){
+       if(ans != null) {
+           String sendtoport=Integer.toString(Integer.parseInt(originator)*2);
+           new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, "ans"+ans, sendtoport);
+       }
     }
 
     public void getnodeid(String port) throws NoSuchAlgorithmException {
@@ -465,11 +524,199 @@ public class SimpleDhtProvider extends ContentProvider {
             return null;
         }
     }
+
+    public String localquery(String selection){
+        String[] filelist=getContext().fileList();
+        for(String f : filelist){
+            if(f.equals(selection)){
+                try{                                //Reference from http://stackoverflow.com/questions/14768191/how-do-i-read-the-file-content-from-the-internal-storage-android-app
+                    //String path=getContextt
+                    FileInputStream fis = getContext().openFileInput(selection);
+                    InputStreamReader isr = new InputStreamReader(fis);
+                    BufferedReader bufferedReader = new BufferedReader(isr);
+                    StringBuilder sb = new StringBuilder();
+                    String line="";
+                    //to debug
+
+
+                    while ((line = bufferedReader.readLine()) != null) {
+                        sb.append(line);
+                    }
+                    //Log.d("Value of line",line);
+                    MatrixCursor cursor=new MatrixCursor(new String[]{"key","value"} );
+                    cursor.addRow(new Object[] { selection, sb.toString() });
+                    //return cursor;
+                    return sb.toString();
+                }
+                catch(IOException e){
+                    Log.e(TAG, "Unable to read from file");
+                }
+            }}
+         /*   if(selection.equals( "\"*\"") || selection.equals( "\"@\"")){
+            Log.d(TAG,"selection * query");
+            MatrixCursor cursor=new MatrixCursor(new String[]{"key","value"} );
+            StringBuilder sb = new StringBuilder();
+            for(String f : filelist){
+
+                try{                                //Reference from http://stackoverflow.com/questions/14768191/how-do-i-read-the-file-content-from-the-internal-storage-android-app
+                    //String path=getContextt
+                    FileInputStream fis = getContext().openFileInput(f);
+                    InputStreamReader isr = new InputStreamReader(fis);
+                    BufferedReader bufferedReader = new BufferedReader(isr);
+                   // StringBuilder sb = new StringBuilder();
+                    String line="";
+                    //to debug
+
+
+                    while ((line = bufferedReader.readLine()) != null) {
+                        sb.append(line);
+                    }
+                    //Log.d("Value of line",line);
+                    // cursor=new MatrixCursor(new String[]{"key","value"} );
+                    cursor.addRow(new Object[] { f, sb.toString() });
+                    //return cursor;
+                    //return sb.toString();
+                }
+                catch(IOException e){
+                    Log.e(TAG, "Unable to read from file");
+                }
+                Log.d(TAG,"for * selection is"+" "+sb.toString());
+
+            }
+            return sb.toString();
+
+        }*/
+            return null;
+        }
+       // return null;//plz check
+    //}
     @Override
     public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs,
             String sortOrder) {
+
+        ArrayList<String> portstringsq= new ArrayList<String>();
+        portstringsq.add("5554");
+        portstringsq.add("5556");
+        portstringsq.add("5558");
+        portstringsq.add("5560");
+        portstringsq.add("5562");
+
+
         String[] filelist=getContext().fileList();
-        for(String f : filelist){
+        String keyidq = null;
+        String myport = getport();
+        String portstring = Integer.toString(Integer.parseInt(myport)/2);
+
+        try {
+            keyidq = genHash(selection);
+
+            if(( (successoris == "" || predecessoris == "" ) && (!selection.equals( "\"*\"") && !selection.equals( "\"@\""))) ){
+                String ans = localquery(selection);
+                MatrixCursor cursor=new MatrixCursor(new String[]{"key","value"} );
+                cursor.addRow(new Object[] { selection, ans.toString() });
+                return cursor;
+               // return localquery(selection);
+            }
+            else if( (selection.equals( "\"*\"") || selection.equals( "\"@\""))){ //returning all key-value pairs
+                Log.d(TAG,"selection * query");
+                MatrixCursor cursor=new MatrixCursor(new String[]{"key","value"} );
+                for(String f : filelist){
+
+                    try{                                //Reference from http://stackoverflow.com/questions/14768191/how-do-i-read-the-file-content-from-the-internal-storage-android-app
+                        //String path=getContextt
+                        FileInputStream fis = getContext().openFileInput(f);
+                        InputStreamReader isr = new InputStreamReader(fis);
+                        BufferedReader bufferedReader = new BufferedReader(isr);
+                        StringBuilder sb = new StringBuilder();
+                        String line="";
+                        //to debug
+
+
+                        while ((line = bufferedReader.readLine()) != null) {
+                            sb.append(line);
+                        }
+                        //Log.d("Value of line",line);
+                        // cursor=new MatrixCursor(new String[]{"key","value"} );
+                        cursor.addRow(new Object[] { f, sb.toString() });
+                        //return cursor;
+                        
+                    }
+                    catch(IOException e){
+                        Log.e(TAG, "Unable to read from file");
+                    }
+
+
+                }
+                return cursor;
+            }
+            //search locally
+            else if(( predecessoris.compareTo(keyidq)<0 && keyidq.compareTo(genHash(portstring))<=0 )){
+
+                String ans = localquery(selection);
+                MatrixCursor cursor=new MatrixCursor(new String[]{"key","value"} );
+                cursor.addRow(new Object[] { selection, ans.toString() });
+                return cursor;
+                // return localquery(selection);
+            }
+            //send to lowest port
+            else if(keyidq.compareTo(highid) >0 || keyidq.compareTo(lowid) <0){
+                Log.d(TAG,"in splquery of else"+getport());
+                for(int i=0;i<portstringsq.size();i++){
+                    if(lowid.equals(genHash(portstringsq.get(i)))){
+                        String lowestport = Integer.toString(Integer.parseInt(portstringsq.get(i))*2);
+                        //String msg = new String("splpartitionin"+key +"-"+val);
+                        String msg = "splquery"+portstring+selection;
+                        AsyncTask d=new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, msg,lowestport);
+                        synchronized (d) {
+                            while(resultans.equals("")){
+                                d.wait(100);
+                            }
+                        }
+
+                        if(!resultans.equals("")){
+                            MatrixCursor cursor=new MatrixCursor(new String[]{"key","value"} );
+                            cursor.addRow(new Object[] { selection, resultans.toString() });
+                            resultans="";
+                            return cursor;
+                        }
+                    }
+                }
+
+            }
+            //send to successor
+            else{
+
+                Log.d(TAG,"in query of else"+portstring+" "+selection);
+                String successor_k="";
+                //Log.d(TAG,)
+                String successorid_k=successoris;
+                for(int i=0;i<portstringsq.size();i++){
+                    if (successorid_k.equals(genHash(portstringsq.get(i)))){
+                       // String msg = new String("partitionin"+key +"-"+val);
+                       // Log.d(TAG,"message being sent from insert of else is"+" "+msg);
+                        successor_k=Integer.toString(Integer.parseInt(portstringsq.get(i))*2);
+                        String msg = "query"+portstring+selection;
+                        AsyncTask c= new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, msg,successor_k);
+                        synchronized (c) {
+                            while(resultans.equals("")){
+                                c.wait(100);
+                            }
+                        }
+
+                        if(!resultans.equals("")){
+                            MatrixCursor cursor=new MatrixCursor(new String[]{"key","value"} );
+                            cursor.addRow(new Object[] { selection, resultans.toString() });
+                            Log.d(TAG,"query result returned at"+" "+getport()+resultans);
+                            resultans="";
+                            return cursor;
+                        }
+                        //successor_k =portstrings.get(i);
+                    }
+                }
+            }
+
+
+       /* for(String f : filelist){
             if(f.equals(selection)){
                 try{                                //Reference from http://stackoverflow.com/questions/14768191/how-do-i-read-the-file-content-from-the-internal-storage-android-app
                     //String path=getContextt
@@ -494,42 +741,19 @@ public class SimpleDhtProvider extends ContentProvider {
                 }
             }
 
-           }
-        if(selection.equals("\"*\"" ) || selection.equals("\"@\"" )){ //returning all key-value pairs
-            MatrixCursor cursor=new MatrixCursor(new String[]{"key","value"} );
-            for(String f : filelist){
+           }*/
 
-                    try{                                //Reference from http://stackoverflow.com/questions/14768191/how-do-i-read-the-file-content-from-the-internal-storage-android-app
-                        //String path=getContextt
-                        FileInputStream fis = getContext().openFileInput(f);
-                        InputStreamReader isr = new InputStreamReader(fis);
-                        BufferedReader bufferedReader = new BufferedReader(isr);
-                        StringBuilder sb = new StringBuilder();
-                        String line="";
-                        //to debug
+        //Log.v("query", selection);
 
 
-                        while ((line = bufferedReader.readLine()) != null) {
-                            sb.append(line);
-                        }
-                        //Log.d("Value of line",line);
-                        // cursor=new MatrixCursor(new String[]{"key","value"} );
-                        cursor.addRow(new Object[] { f, sb.toString() });
-                        //return cursor;
-                    }
-                    catch(IOException e){
-                        Log.e(TAG, "Unable to read from file");
-                    }
 
-
-            }
-            return cursor;
-        }
-        Log.v("query", selection);
-
-
-        return null;
        // return null;
+       }catch (NoSuchAlgorithmException e) {
+        e.printStackTrace();
+    } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 
     @Override
